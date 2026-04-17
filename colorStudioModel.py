@@ -1,6 +1,7 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Color Studio - Rémi Cozot 2019
+Auteurs: KARAMI Anir, ARABAH Yanis (BUT3 INFO - APP Parcours A - 2026)
 ----------------------------------
 new version of 
 Color Studio - Rémi Cozot 2019
@@ -111,32 +112,16 @@ class Light:
 		self._needUpdate = True
 	
 	def render(self):
-	
-		if self._firstUpdate or self._needUpdate :
-
-            # get current active image
+		if self._firstUpdate or self._needUpdate:
+			# get current active image
 			img = self._ImagesArray._images[self._imageIdx]
-
-            # new image
-			imgOut = np.zeros(img.shape)
-			
-			# color filter	
-			imgOut[:,:,0]= img[:,:,0]*self._npColorRGB[0]
-			imgOut[:,:,1]= img[:,:,1]*self._npColorRGB[1]
-			imgOut[:,:,2]= img[:,:,2]*self._npColorRGB[2]
-		
-			# exposure
-			imgOut =imgOut*math.pow(2,self._exposure)
-	
+			# Vectorised color filter and exposure
+			imgOut = img * self._npColorRGB * (2.0 ** self._exposure)
 			self._currentImage = imgOut
-			
 			self._firstUpdate = False
 			self._needUpdate = False
 		else:
-			
-            # no change, just return current image
 			imgOut = self._currentImage
-		
 		return imgOut
 	
 	def print(self):
@@ -160,7 +145,7 @@ class Light:
 		outString ="<"+lightMark+" name=\""+self._name+"\""+">"+"\n"+ \
 			"<"+inputFileMark+ \
 			" ext=\"" + \
-			self.ImagesArray._extImageName+ \
+			self._ImagesArray._extImageName+ \
 			"\" min=\"0\" max=\""+str(self._ImagesArray._nbImage)+"\" "+ \
 			" digit=\""+ str(self._ImagesArray._nbDigit) + "\" >" + \
 			self._ImagesArray._pathImage+self._ImagesArray._baseImageName+ \
@@ -181,16 +166,54 @@ class Light:
 class Scene:
     def __init__(self, hdr = False):
         self._lights = []           # set of lights
-        self._postProcesses = []    # set of postprocessing
         self._hdr = hdr
+        
+        # Standard post-processes in exact pipeline order
+        self._whiteBalance = WhiteBalance()
+        self._autoExposure = AE_Ymean(Ytarget=0.5, exposure=0.0)
+        self._saturation = Saturation()
+        self._gamma = Gamma(gamma=1.0)
+        
+        self._postProcesses = [
+            self._whiteBalance,
+            self._autoExposure,
+            self._saturation,
+            self._gamma
+        ]
 
     def addLight(self,light): self._lights.append(light)
 
-    def addPostProcess(self, postProcess): self._postProcesses.append(postProcess)
+    def addPostProcess(self, postProcess): 
+        # Avoid duplicate standard post-processes if added manually
+        if isinstance(postProcess, WhiteBalance):
+            self._postProcesses.remove(self._whiteBalance)
+            self._whiteBalance = postProcess
+            self._postProcesses.insert(0, self._whiteBalance)
+        elif isinstance(postProcess, AE_Ymean):
+            self._postProcesses.remove(self._autoExposure)
+            self._autoExposure = postProcess
+            self._postProcesses.insert(1, self._autoExposure)
+        elif isinstance(postProcess, Saturation):
+            self._postProcesses.remove(self._saturation)
+            self._saturation = postProcess
+            self._postProcesses.insert(2, self._saturation)
+        elif isinstance(postProcess, Gamma):
+            self._postProcesses.remove(self._gamma)
+            self._gamma = postProcess
+            self._postProcesses.insert(3, self._gamma)
+        else:
+            self._postProcesses.append(postProcess)
 
     def clear(self):
         self._lights.clear()
-        self._postProcesses.clear()
+        # Reset standard post-processes to default values
+        self._whiteBalance.setColor(np.array([1.0, 1.0, 1.0]))
+        self._autoExposure._Ytarget = 0.5
+        self._autoExposure.setExposure(0.0)
+        self._autoExposure.setOnOff(True)
+        self._saturation.setLinearSaturation(0.0)
+        self._saturation.setGammaSaturation(0.0)
+        self._gamma.setGamma(1.0)
 
     def getLightByName(self,name):
         returnLight = None
@@ -219,14 +242,21 @@ class Scene:
 
     def toXML(self):
         # create XML string
-        # <LIGHTS>
         lsMark = "LIGHTS"
-        outString = "<"+lsMark+">"+"\n"
+        lightsString = "<"+lsMark+">"+"\n"
         for l in self._lights :
-            outString = outString+l.toXML()+"\n"
-        # add </LIGHTS>
-        outString = outString + "</" +lsMark +">"+ '\n'
-        return  outString
+            lightsString = lightsString+l.toXML()+"\n"
+        lightsString = lightsString + "</" +lsMark +">"
+        
+        ppMark = "POSTPROCESSES"
+        ppString = "<"+ppMark+">"+"\n"
+        for pp in self._postProcesses:
+            if hasattr(pp, 'toXML'):
+                ppString = ppString+pp.toXML()+"\n"
+        ppString = ppString + "</" +ppMark +">"
+        
+        outString = "<LIGHTSETTUP>\n" + lightsString + "\n" + ppString + "\n</LIGHTSETTUP>\n"
+        return outString
 
     def fromXML(self, xmlFile, scale =0.5):
         # parse XML file
@@ -282,7 +312,7 @@ class Scene:
         print("<ColorStudio: DEBUG>")
         xPosts = xdoc.getElementsByTagName('POSTPROCESS')
 
-        # explore postprocess (in order they will be applyed in the same order (!))
+        # explore postprocess
         for xp in xPosts:
             children = xp.childNodes # all children
             for child in children:
@@ -290,16 +320,37 @@ class Scene:
                 if childNodeIsElement : 
                     # child is ELEMENT
                     if child.tagName == 'CHROMA':
-                        # <CHROMA type="AWB"|"SATURATION">
-                        # get type attribute value
+                        # <CHROMA type="AWB"|"SATURATION"|"saturation">
                         typeString = child.attributes['type'].value
                         print('<CHROMA type="',typeString,'">')
                         if typeString=='AWB':
-                            pass
-                        if typeString=='saturation':
-                            pass
+                            color_nodes = child.getElementsByTagName('COLOR')
+                            if color_nodes:
+                                color = color_nodes[0]
+                                r = float(color.getElementsByTagName('R')[0].firstChild.data)
+                                g = float(color.getElementsByTagName('G')[0].firstChild.data)
+                                b = float(color.getElementsByTagName('B')[0].firstChild.data)
+                                self._whiteBalance.setColor(np.array([r, g, b]))
+                        elif typeString=='saturation' or typeString=='SATURATION':
+                            linear_nodes = child.getElementsByTagName('LINEAR')
+                            gamma_nodes = child.getElementsByTagName('GAMMA')
+                            linear_val = float(linear_nodes[0].firstChild.data) if linear_nodes else 0.0
+                            gamma_val = float(gamma_nodes[0].firstChild.data) if gamma_nodes else 0.0
+                            self._saturation.setLinearSaturation(linear_val)
+                            self._saturation.setGammaSaturation(gamma_val)
 
-
+                    elif child.tagName == 'LUMINANCE':
+                        # <LUMINANCE type="AE"|"GAMMA">
+                        typeString = child.attributes['type'].value
+                        print('<LUMINANCE type="',typeString,'">')
+                        if typeString=='AE':
+                            y_nodes = child.getElementsByTagName('Y')
+                            y_val = float(y_nodes[0].firstChild.data) if y_nodes else 0.5
+                            self._autoExposure._Ytarget = y_val
+                        elif typeString=='GAMMA':
+                            gamma_nodes = child.getElementsByTagName('GAMMA')
+                            gamma_val = float(gamma_nodes[0].firstChild.data) if gamma_nodes else 1.0
+                            self._gamma.setGamma(gamma_val)
 
         # rendered-image files management
         # just load once rendered-image files
@@ -336,6 +387,62 @@ class PostProcess:
 	def postProcess(self,img):
 		return img
 # ----------------------------------------------------------------------------------
+#  POST PROCESS : WHITE BALANCE
+# ----------------------------------------------------------------------------------
+class WhiteBalance(PostProcess):
+
+    def __init__(self, color=None):
+        super().__init__()
+        if color is None:
+            self._npColorRGB = np.array([1.0, 1.0, 1.0])
+        else:
+            self._npColorRGB = np.asarray(color)
+
+    def setColor(self, color):
+        self._npColorRGB = np.asarray(color)
+
+    def postProcess(self, img):
+        return img * self._npColorRGB
+
+    def toXML(self):
+        return (
+            f'\t\t<POSTPROCESS name="white balance">\n'
+            f'\t\t\t<CHROMA type="AWB">\n'
+            f'\t\t\t\t<COLOR format="float">\n'
+            f'\t\t\t\t\t<R>{self._npColorRGB[0]}</R>\n'
+            f'\t\t\t\t\t<G>{self._npColorRGB[1]}</G>\n'
+            f'\t\t\t\t\t<B>{self._npColorRGB[2]}</B>\n'
+            f'\t\t\t\t</COLOR>\n'
+            f'\t\t\t</CHROMA>\n'
+            f'\t\t</POSTPROCESS>'
+        )
+# ----------------------------------------------------------------------------------
+#  POST PROCESS : GAMMA
+# ----------------------------------------------------------------------------------
+class Gamma(PostProcess):
+
+    def __init__(self, gamma=1.0):
+        super().__init__()
+        self._gamma = gamma
+
+    def setGamma(self, gamma):
+        self._gamma = gamma
+
+    def postProcess(self, img):
+        if self._gamma != 1.0 and self._gamma > 0.0:
+            img_clipped = np.clip(img, 0.0, None)
+            return np.power(img_clipped, 1.0 / self._gamma)
+        return img
+
+    def toXML(self):
+        return (
+            f'\t\t<POSTPROCESS name="gamma">\n'
+            f'\t\t\t<LUMINANCE type="GAMMA">\n'
+            f'\t\t\t\t<GAMMA>{self._gamma}</GAMMA>\n'
+            f'\t\t\t</LUMINANCE>\n'
+            f'\t\t</POSTPROCESS>'
+        )
+# ----------------------------------------------------------------------------------
 #  POST PROCESS : SATURATION -VIBRANCE 
 # ----------------------------------------------------------------------------------
 class Saturation(PostProcess):
@@ -349,42 +456,44 @@ class Saturation(PostProcess):
 
     def setGammaSaturation(self,vibrance): self._gammaSaturation = vibrance
 
-    def postProcess(self,img):
-        if self._linearSaturation!=0: 
-            # linearSat to u in [-1,1]
-            u = self._linearSaturation/100
-            # convert to hsv
+    def postProcess(self, img):
+        if self._linearSaturation != 0 or self._gammaSaturation != 0:
+            # Convert to hsv once
             imgHSV = skimage.color.rgb2hsv(img)
-            satChannel = imgHSV[:,:,1]
-            one = np.ones(satChannel.shape)
-            if u > 0.0 :    new_satChannel = (1-u)*satChannel+ u*self._saturationRange*one
-            else:           new_satChannel = (1+u)*satChannel 
-            imgHSV[:,:,1] = new_satChannel[:,:]
-            # back to rgb
+            satChannel = imgHSV[:, :, 1]
+
+            # Apply linear saturation if enabled
+            if self._linearSaturation != 0:
+                u = self._linearSaturation / 100
+                if u > 0.0:
+                    satChannel = (1 - u) * satChannel + u * self._saturationRange
+                else:
+                    satChannel = (1 + u) * satChannel
+
+            # Apply gamma saturation if enabled
+            if self._gammaSaturation != 0:
+                if self._gammaSaturation > 0.0:
+                    gamma = 1 + (self._gammaSaturation / 25)
+                    satChannel = np.power(satChannel, 1 / gamma)
+                else:
+                    gamma = 1 + (-self._gammaSaturation / 25)
+                    satChannel = np.power(satChannel, gamma)
+
+            imgHSV[:, :, 1] = satChannel
+            # Convert back to rgb once
             img = skimage.color.hsv2rgb(imgHSV)
 
-        if self._gammaSaturation != 0 :
-            # convert to hsv
-            imgHSV = skimage.color.rgb2hsv(img)
-            satChannel = imgHSV[:,:,1]
-            if   self._gammaSaturation > 0.0 :
-                # gamma value
-                gamma =1+(self._gammaSaturation/25)
-                # DEBUG
-                print("Saturation: S^(1/gamma) << gamma=",gamma)
-                new_satChannel = np.power(satChannel, 1/gamma)
-            elif self._gammaSaturation < 0.0 :  
-                # gamma value
-                gamma =1+(-self._gammaSaturation/25)
-                # DEBUG
-                print("Saturation: S^(gamma) << gamma=",gamma)
-                new_satChannel = np.power(satChannel, gamma)
-            imgHSV[:,:,1] = new_satChannel[:,:]
-            # back to rgb
-            img = skimage.color.hsv2rgb(imgHSV)
-        imgOut = img
+        return img
 
-        return imgOut
+    def toXML(self):
+        return (
+            f'\t\t<POSTPROCESS name="saturation">\n'
+            f'\t\t\t<CHROMA type="saturation">\n'
+            f'\t\t\t\t<LINEAR>{self._linearSaturation}</LINEAR>\n'
+            f'\t\t\t\t<GAMMA>{self._gammaSaturation}</GAMMA>\n'
+            f'\t\t\t</CHROMA>\n'
+            f'\t\t</POSTPROCESS>'
+        )
 # ----------------------------------------------------------------------------------
 #  POST PROCESS : AE_YMEAN - Automatic Exposure Ymean-> Ytarget
 # ----------------------------------------------------------------------------------
@@ -406,18 +515,28 @@ class AE_Ymean(PostProcess):
         if self._on_off: 
             # compute mean Y (Luminance)
             ymeanb = image2Ymean(img)
+            if ymeanb == 0.0: ymeanb = 1e-5
             imgOut = img*(self._Ytarget/ymeanb)*math.pow(2,self._exposureON)
         else: 
             imgOut = img*math.pow(2,self._exposureOFF)
 
         return imgOut
+
+    def toXML(self):
+        return (
+            f'\t\t<POSTPROCESS name="auto exposure">\n'
+            f'\t\t\t<LUMINANCE type="AE">\n'
+            f'\t\t\t\t<Y>{self._Ytarget}</Y>\n'
+            f'\t\t\t</LUMINANCE>\n'
+            f'\t\t</POSTPROCESS>'
+        )
 # ----------------------------------------------------------------------------------
 class PPClip(PostProcess):
 
-	def __int__(self,minValue=0.0,maxValue=1.0):
+	def __init__(self,minValue=0.0,maxValue=1.0):
 		self._minValue = minValue
 		self._maxValue = maxValue
 	
 	def postProcess(self,img):
-		return np.clip(imgOut,self._minValue,self._maxValue)
+		return np.clip(img,self._minValue,self._maxValue)
 

@@ -1,0 +1,25 @@
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# macOS system files
+.DS_Store
+
+# IDE / Editor configurations
+.idea/
+.vscode/
+*.suo
+*.user
+*.userossc
+*.sln
+*.docstates
+
+
+images/

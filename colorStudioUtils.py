@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Color Studio - Rémi Cozot 2019
+Auteurs: KARAMI Anir, ARABAH Yanis (BUT3 INFO - APP Parcours A - 2026)
 ----------------------------------
 new version of 
 Color Studio - Rémi Cozot 2019

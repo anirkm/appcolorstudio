@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Color Studio - Rémi Cozot 2019
+Auteurs: KARAMI Anir, ARABAH Yanis (BUT3 INFO - APP Parcours A - 2026)
 ----------------------------------
 new version of 
 Color Studio - Rémi Cozot 2019
@@ -19,7 +20,7 @@ Color Studio - Rémi Cozot 2019
 # ----------------------------------------------------------------------------------
 import sys
 
-from PyQt5.QtWidgets import QApplication, QFileDialog
+from PyQt6.QtWidgets import QApplication, QFileDialog
 
 import colorStudioModel
 import colorStudioWidget
@@ -64,5 +65,5 @@ lightsScene.print()
 ui = colorStudioUIBuilder.CSUIAllBuilder(lightsScene)
 
 # run app for event management
-app.exec_()
+app.exec()
 

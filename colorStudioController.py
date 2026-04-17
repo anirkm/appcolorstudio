@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Color Studio - Rémi Cozot 2019
+Auteurs: KARAMI Anir, ARABAH Yanis (BUT3 INFO - APP Parcours A - 2026)
 ----------------------------------
 new version of 
 Color Studio - Rémi Cozot 2019
@@ -25,9 +26,9 @@ import moderngl
 import numpy as np
 import skimage
 
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QSlider
-from PyQt5.QtGui import QIcon, QPixmap, QImage
-from PyQt5 import QtCore, QtOpenGL 
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QSlider, QFileDialog
+from PyQt6.QtGui import QIcon, QPixmap, QImage
+from PyQt6 import QtCore
 
 import colorStudioModel
 
@@ -152,3 +153,71 @@ class CSSaturationController(CSController):
             w._update(img)
 
 # ----------------------------------------------------------------------------------
+class CSLoadSaveController(CSController):
+    def __init__(self, root, widget, ui_builder):
+        super().__init__(root, None, None, controlledWidget=widget)
+        self._ui_builder = ui_builder
+
+    def _event(self, widget, event):
+        eventType = event[0]
+        # 0: Load setup XML
+        # 1: Save setup XML
+
+        if eventType == 0:
+            # Load
+            filename, _ = QFileDialog.getOpenFileName(
+                None,
+                "Select Light Setup XML File",
+                "./",
+                "XML files (*.xml)"
+            )
+            if filename:
+                print("ColorStudio: Loading XML Setup >", filename)
+                self._sceneRoot.clear()
+                self._sceneRoot.fromXML(filename, scale=self._ui_builder.template['scale'])
+                self._ui_builder.rebuildControls()
+                
+        elif eventType == 1:
+            # Save
+            filename, _ = QFileDialog.getSaveFileName(
+                None,
+                "Save Light Setup XML File",
+                "./",
+                "XML files (*.xml)"
+            )
+            if filename:
+                if not filename.endswith(".xml"):
+                    filename += ".xml"
+                print("ColorStudio: Saving XML Setup >", filename)
+                xml_data = self._sceneRoot.toXML()
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(xml_data)
+
+# ----------------------------------------------------------------------------------
+class CSWhiteBalanceController(CSController):
+    def __init__(self, root, postprocess, widget, cwidget=None, cwController=None):
+        super().__init__(root, postprocess, widget, controlledWidget=cwidget)
+        self._colorWheelController = cwController
+
+    def _event(self, widget, event):
+        eventType = event[0]
+        # 2: change white balance color (active in color wheel)
+
+        if eventType == 2:
+            self._colorWheelController._controlledWidget.setWindowTitle("Color Wheel::White Balance")
+            self._colorWheelController._scene = self._scene
+
+# ----------------------------------------------------------------------------------
+class CSGammaController(CSController):
+    def __init__(self, root, postprocess, widget, cwidget=None):
+        super().__init__(root, postprocess, widget, controlledWidget=cwidget)
+
+    def _event(self, widget, event):
+        eventType = event[0]
+        # 0: set gamma correction
+
+        if eventType == 0:
+            self._scene.setGamma(event[1])
+            img = self._sceneRoot.render()
+            for w in self._widget:
+                w._update(img)
