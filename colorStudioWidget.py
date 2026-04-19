@@ -260,20 +260,25 @@ class CSQIMGSwitchButton(QPushButton):
 # ----------------------------------------------------------------------------------
 class CSQLoadSaveLayout(QHBoxLayout):
 
-	def __init__(self,qiconLoad,qiconSave,controller=None):
+	def __init__(self,qiconLoad,qiconSave,controller=None,export_controller=None):
 		super().__init__()
 		self._controller = controller
-		
+		self._export_controller = export_controller
+
 		# create load and save button
 		self.loadButton = CSQIMGButton(qiconLoad,(50,50),name="load button")
 		self.saveButton = CSQIMGButton(qiconSave,(50,50),name="save button")
-	
+		self.exportButton = QPushButton("Export")
+		self.exportButton.setToolTip("Exporter l'image composée finale en PNG ou JPEG")
+
 		# add button to layout
 		self.addWidget(self.loadButton)
 		self.addWidget(self.saveButton)
+		self.addWidget(self.exportButton)
 
 		self.loadButton.clicked.connect(self.loadSetup)
 		self.saveButton.clicked.connect(self.saveSetup)
+		self.exportButton.clicked.connect(self.exportImage)
 
 	def loadSetup(self):
 		if self._controller:
@@ -282,6 +287,10 @@ class CSQLoadSaveLayout(QHBoxLayout):
 	def saveSetup(self):
 		if self._controller:
 			self._controller._event(self, [1, None])
+
+	def exportImage(self):
+		if self._export_controller:
+			self._export_controller.exportImage()
 # ----------------------------------------------------------------------------------
 class CSQWhiteBalanceLayout(QHBoxLayout):
 

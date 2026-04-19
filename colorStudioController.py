@@ -221,3 +221,25 @@ class CSGammaController(CSController):
             img = self._sceneRoot.render()
             for w in self._widget:
                 w._update(img)
+
+# ----------------------------------------------------------------------------------
+class CSExportController(CSController):
+    def __init__(self, root):
+        super().__init__(root, None, None, controlledWidget=None)
+
+    def exportImage(self):
+        from PyQt6.QtWidgets import QFileDialog
+        filepath, _ = QFileDialog.getSaveFileName(
+            None,
+            "Exporter l'image composée",
+            "./",
+            "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
+        )
+        if filepath:
+            try:
+                img = self._sceneRoot.render()
+                imgExport = (img * 255).astype('uint8')
+                imageio.imwrite(filepath, imgExport)
+                print(f"Image exported to: {filepath}")
+            except Exception as e:
+                print(f"Error exporting image: {e}")

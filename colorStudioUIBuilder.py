@@ -286,13 +286,16 @@ class CSUIAllBuilder(CSUIBuilder):
         # 1. Clear existing control widgets from layout
         self.clearLayout(self._controlWidget._layout)
 
-        # 2. Add Load / Save Setup
+        # 2. Add Load / Save / Export Setup
         self._controlWidget._layout.addWidget(self.createHeader("SAUVEGARDE & CHARGEMENT"))
         loadSaveLayout = colorStudioWidget.CSQLoadSaveLayout(CSUIBuilder.uiLoadIMG, CSUIBuilder.uiSaveIMG)
         self._controlWidget._layout.addLayout(loadSaveLayout)
-        
+
         loadSaveController = colorStudioController.CSLoadSaveController(self._lightsScene, loadSaveLayout, self)
         loadSaveLayout._controller = loadSaveController
+
+        exportController = colorStudioController.CSExportController(self._lightsScene)
+        loadSaveLayout._export_controller = exportController
 
         # 3. Light Control Layout per light
         for light in self._lightsScene._lights:
